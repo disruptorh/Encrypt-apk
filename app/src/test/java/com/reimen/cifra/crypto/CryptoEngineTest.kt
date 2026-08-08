@@ -9,13 +9,14 @@ import org.junit.Test
 
 /**
  * Round-trip cifrar→descifrar para múltiples tamaños, y negativos
- * (contraseña/pepper incorrectos, ciphertext corrupto).
+ * (contraseña/pepper incorrectos, ciphertext corrupto, parámetros del sobre
+ * manipulados vía AAD).
  *
  * Se usa un perfil liviano (64 KiB / t=2 / p=1) para que los tests sean rápidos.
  */
 class CryptoEngineTest {
 
-    private val fastProfile = CryptoEngine.KdfProfile(64, 2, 1, "Test")
+    private val fastProfile = CryptoEngine.KdfProfile(64, 2, "Test")
 
     private fun encrypt(pw: String, pepper: String? = null, data: String = "hola"): String =
         CryptoEngine.encrypt(
@@ -97,6 +98,31 @@ class CryptoEngineTest {
         }
     }
 
+    private fun tamperJson(blob: String, transform: (String) -> String): String {
+        val decoded = java.util.Base64.getUrlDecoder().decode(blob)
+        val json = String(decoded, Charsets.UTF_8)
+        return java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(transform(json).toByteArray(Charsets.UTF_8))
+    }
+
+    @Test
+    fun `tampered mem_kib rejected via aad`() {
+        val blob = encrypt("pw", data = "parámetros autenticados")
+        val tampered = tamperJson(blob) { it.replace("\"mem_kib\":64", "\"mem_kib\":128") }
+        assertThrows(CryptoEngine.CryptoException::class.java) {
+            decrypt(tampered, "pw")
+        }
+    }
+
+    @Test
+    fun `tampered ops rejected via aad`() {
+        val blob = encrypt("pw", data = "ops autenticados")
+        val tampered = tamperJson(blob) { it.replace("\"ops\":2", "\"ops\":3") }
+        assertThrows(CryptoEngine.CryptoException::class.java) {
+            decrypt(tampered, "pw")
+        }
+    }
+
     @Test
     fun `encrypt produces unique nonce each time`() {
         val a = encrypt("pw", data = "mismo")
@@ -105,23 +131,42 @@ class CryptoEngineTest {
     }
 
     @Test
-    fun `envelope carries kdf parameters`() {
+    fun `envelope carries kdf and aead parameters`() {
         val blob = CryptoEngine.encrypt(
             "data".toByteArray(Charsets.UTF_8), "pw".toCharArray(), null, CryptoEngine.KdfProfile.STANDARD
         )
         val envelope = Envelope.fromBase64(blob)
+        assertEquals(Envelope.AEAD_NAME, envelope.aead)
         assertEquals(Envelope.KDF_NAME, envelope.kdf)
         assertEquals(CryptoEngine.KdfProfile.STANDARD.memKib, envelope.memKib)
-        assertEquals(CryptoEngine.KdfProfile.STANDARD.iterations, envelope.iterations)
-        assertEquals(CryptoEngine.KdfProfile.STANDARD.parallelism, envelope.parallelism)
+        assertEquals(CryptoEngine.KdfProfile.STANDARD.iterations, envelope.ops)
         assertEquals(16, envelope.salt.size)
-        assertEquals(12, envelope.nonce.size)
+        assertEquals(24, envelope.nonce.size)
     }
 
     @Test
     fun `maximum profile still decrypts`() {
         val blob = CryptoEngine.encrypt("d".toByteArray(), "pw".toCharArray(), null, CryptoEngine.KdfProfile.MAXIMUM)
         assertFalse(blob.isBlank())
+    }
+
+    // ------------------------------------------------------------------
+    // Interoperabilidad: sobres producidos por el lado C++ (Encrypt-C++).
+    // Cifrados con libsodium (XChaCha20-Poly1305 + Argon2id p=1 + BLAKE2b).
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `decrypts blob produced by C++ standard profile with pepper`() {
+        val blob = "eyJ2IjoxLCJhZWFkIjoieGNoYWNoYTIwcG9seTEzMDVfaWV0ZiIsImtkZiI6ImFyZ29uMmlkIiwib3BzIjozLCJtZW1fa2liIjo2NTUzNiwic2FsdCI6IkY4WHN1SnRvdWI0ZDhpa0lXVEQ1cUEiLCJub25jZSI6IkFqQnZfQUZzeVVvdWJkb1dxQnl2c2FqajEtNFNuMUpOIiwiY2lwaGVydGV4dCI6IktFNjVManNsdms1ZEdLWWtGZ2lEaUhpZEJmOTNQV3R1Z0QyVzUzaXR2bUItMzBTbTZRUEgyZmtYakNGejA0aVdIc1VGVFhGc3dFRlVRV09EczlJIn0"
+        val out = decrypt(blob, "password-1234", "pepper-de-verificación")
+        assertEquals("Vector de interoperabilidad XChaCha20-Poly1305", out)
+    }
+
+    @Test
+    fun `decrypts blob produced by C++ maximum profile without pepper`() {
+        val blob = "eyJ2IjoxLCJhZWFkIjoieGNoYWNoYTIwcG9seTEzMDVfaWV0ZiIsImtkZiI6ImFyZ29uMmlkIiwib3BzIjo2LCJtZW1fa2liIjoyNjIxNDQsInNhbHQiOiJyMEpON1Zac25FT1ZGS3ZxSXZfYVBBIiwibm9uY2UiOiItdVNNQmF0ZlA5MkJEdE5GaWtDbGw4cnl1cTZZMHZrNCIsImNpcGhlcnRleHQiOiJQUFkwSDUwWng5anNReFV4NjhUZUJ2UDVGOVo4eHdNQzNVR2d3LXJVRGtvYUQ1RVJ0STFjNno4RW5rSDhIcWNkRGVtNEMzZk1uYnlZZlRmdHgyWSJ9"
+        val out = decrypt(blob, "password-1234")
+        assertEquals("Vector de interoperabilidad XChaCha20-Poly1305", out)
     }
 
     @Test

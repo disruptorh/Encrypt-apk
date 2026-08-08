@@ -1,13 +1,18 @@
 package com.reimen.cifra.crypto
 
 import java.security.SecureRandom
-import javax.crypto.AEADBadTagException
 
 /**
  * Única puerta de entrada de la criptografía de la app.
  *
- * Cifrar:   salt aleatorio → Argon2id(password, salt, pepper) → AES-256-GCM → sobre → Base64.
- * Descifrar: sobre → parámetros del sobre → misma derivación → GCM → texto plano.
+ * Cifrar:   salt aleatorio → Argon2id(password, salt, pepper, p=1) → clave →
+ *           XChaCha20-Poly1305(plaintext, AAD = parámetros del sobre) → sobre → Base64.
+ * Descifrar: sobre → parámetros del sobre → misma derivación → AEAD → texto plano.
+ *
+ * El esquema criptográfico es byte-a-byte compatible con el lado C++
+ * (Encrypt-C++): mismo KDF (Argon2id con p=1 y binding de pepper por BLAKE2b),
+ * mismo AEAD (XChaCha20-Poly1305 de libsodium), mismo sobre JSON/Base64 y el
+ * AAD autentica los parámetros del KDF dentro del tag.
  *
  * La capa crypto no conoce Android: solo usa JCA, Bouncy Castle y java.util.
  */
@@ -17,17 +22,20 @@ object CryptoEngine {
     data class KdfProfile(
         val memKib: Int,
         val iterations: Int,
-        val parallelism: Int,
         val label: String
     ) {
         companion object {
-            val STANDARD = KdfProfile(65536, 3, 4, "Estándar")
-            val MAXIMUM = KdfProfile(262144, 6, 4, "Máxima")
+            val STANDARD = KdfProfile(65536, 3, "Estándar")
+            val MAXIMUM = KdfProfile(262144, 6, "Máxima")
             val ALL = listOf(STANDARD, MAXIMUM)
         }
     }
 
     class CryptoException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+    // libsodium (lado C++) deriva con p=1 hardcodeado: no se serializa en el
+    // sobre porque nunca cambia.
+    private const val KDF_PARALLELISM = 1
 
     // Presupuesto de memoria conservador para evitar OutOfMemoryError.
     // El pico estimado ≈ memoria del KDF + 10× el texto (copias en bytes, UTF-16,
@@ -38,6 +46,9 @@ object CryptoEngine {
 
     private const val MEMORY_ERROR_MESSAGE =
         "Memoria insuficiente para procesar este contenido. Reduce el tamaño o usa el perfil Estándar."
+
+    private const val AUTH_ERROR_MESSAGE =
+        "Fallo de autenticación: contraseña o campo secreto incorrectos, o datos manipulados"
 
     /**
      * ¿Cabe [plaintextBytes] con un KDF de [kdfMemKib] KiB dentro del heap disponible?
@@ -55,6 +66,15 @@ object CryptoEngine {
     }
 
     private fun sizeMb(bytes: Long): String = String.format("%.1f", bytes / (1024.0 * 1024.0))
+
+    /**
+     * AAD estable y desacoplado: "v|aead|kdf|ops|mem_kib" (misma cadena que
+     * `envelope::build_aad` del lado C++). Autentica los parámetros del KDF
+     * DENTRO del tag del AEAD: manipular "mem_kib"/"ops" en el JSON sin
+     * re-cifrar provoca fallo de autenticación.
+     */
+    private fun buildAad(version: Int, aeadName: String, kdfName: String, ops: Int, memKib: Int): ByteArray =
+        "$version|$aeadName|$kdfName|$ops|$memKib".toByteArray(Charsets.US_ASCII)
 
     /**
      * @param plaintext  texto a cifrar (UTF-8 del usuario).
@@ -88,19 +108,24 @@ object CryptoEngine {
                 pepper = pepperBytes,
                 memKib = profile.memKib,
                 iterations = profile.iterations,
-                parallelism = profile.parallelism
+                parallelism = KDF_PARALLELISM
             )
             // Los bloques de memoria de Argon2 ya no son alcanzables: dale al GC la
             // oportunidad de liberarlos ANTES de reservar ciphertext/sobre, para no
             // sumar ambos picos de memoria.
             Runtime.getRuntime().gc()
-            val (nonce, ciphertext) = AesGcmCipher.aesGcmEncrypt(key, plaintext)
+            val nonce = ByteArray(XChaCha20Poly1305.NONCE_BYTES).also { SecureRandom().nextBytes(it) }
+            val aad = buildAad(
+                Envelope.CURRENT_VERSION, Envelope.AEAD_NAME, Envelope.KDF_NAME,
+                profile.iterations, profile.memKib
+            )
+            val ciphertext = XChaCha20Poly1305.encrypt(key, nonce, aad, plaintext)
             val envelope = Envelope(
                 version = Envelope.CURRENT_VERSION,
+                aead = Envelope.AEAD_NAME,
                 kdf = Envelope.KDF_NAME,
+                ops = profile.iterations,
                 memKib = profile.memKib,
-                iterations = profile.iterations,
-                parallelism = profile.parallelism,
                 salt = salt,
                 nonce = nonce,
                 ciphertext = ciphertext
@@ -154,15 +179,14 @@ object CryptoEngine {
                 salt = envelope.salt,
                 pepper = pepperBytes,
                 memKib = envelope.memKib,
-                iterations = envelope.iterations,
-                parallelism = envelope.parallelism
+                iterations = envelope.ops,
+                parallelism = KDF_PARALLELISM
             )
             Runtime.getRuntime().gc()
-            return AesGcmCipher.aesGcmDecrypt(key, envelope.nonce, envelope.ciphertext)
-        } catch (e: AEADBadTagException) {
-            throw CryptoException(
-                "Fallo de autenticación: contraseña o campo secreto incorrectos, o datos manipulados", e
-            )
+            val aad = buildAad(envelope.version, envelope.aead, envelope.kdf, envelope.ops, envelope.memKib)
+            return XChaCha20Poly1305.decrypt(key, envelope.nonce, aad, envelope.ciphertext)
+        } catch (e: AeadAuthException) {
+            throw CryptoException(AUTH_ERROR_MESSAGE, e)
         } catch (e: OutOfMemoryError) {
             throw CryptoException(MEMORY_ERROR_MESSAGE, e)
         } catch (e: CryptoException) {

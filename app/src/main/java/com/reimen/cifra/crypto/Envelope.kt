@@ -8,25 +8,36 @@ import java.util.Base64
  * Sobre cifrado: serialización/deserialización del blob que viaja entre cifrar y
  * descifrar. Formato JSON → Base64 URL-safe sin padding.
  *
+ * El esquema es idéntico al lado C++ (Encrypt-C++):
+ *
+ *   {"v":1,"aead":"xchacha20poly1305_ietf","kdf":"argon2id","ops":N,
+ *    "mem_kib":N,"salt":"<b64>","nonce":"<b64>","ciphertext":"<b64>"}
+ *
  * Los parámetros del KDF van DENTRO del sobre (no hardcodeados), de modo que
  * subir la fuerza en el futuro no rompe compatibilidad con textos antiguos.
  * El pepper NUNCA aparece aquí.
  */
 data class Envelope(
     val version: Int,
+    val aead: String,
     val kdf: String,
+    val ops: Int,
     val memKib: Int,
-    val iterations: Int,
-    val parallelism: Int,
     val salt: ByteArray,
     val nonce: ByteArray,
     val ciphertext: ByteArray
 ) {
     companion object {
         const val CURRENT_VERSION = 1
+        const val AEAD_NAME = "xchacha20poly1305_ietf"
         const val KDF_NAME = "argon2id"
         private const val SALT_BYTES = 16
-        private const val NONCE_BYTES = 12
+        private const val NONCE_BYTES = 24
+        private const val TAG_BYTES = 16
+        private const val OPS_MAX = 16
+        private const val MEM_KIB_MAX = 262144
+
+        private val ALLOWED_FIELDS = setOf("v", "aead", "kdf", "ops", "mem_kib", "salt", "nonce", "ciphertext")
 
         private fun b64encode(bytes: ByteArray): String =
             Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
@@ -49,10 +60,10 @@ data class Envelope(
                 64 + saltB64.length + nonceB64.length + cipherB64.length
             )
             sb.append("{\"v\":").append(envelope.version)
+            sb.append(",\"aead\":\"").append(envelope.aead).append('"')
             sb.append(",\"kdf\":\"").append(envelope.kdf).append('"')
+            sb.append(",\"ops\":").append(envelope.ops)
             sb.append(",\"mem_kib\":").append(envelope.memKib)
-            sb.append(",\"iters\":").append(envelope.iterations)
-            sb.append(",\"parallelism\":").append(envelope.parallelism)
             sb.append(",\"salt\":\"").append(saltB64).append('"')
             sb.append(",\"nonce\":\"").append(nonceB64).append('"')
             sb.append(",\"ciphertext\":\"").append(cipherB64).append('"')
@@ -62,7 +73,8 @@ data class Envelope(
 
         /**
          * @throws EnvelopeException si el blob está malformado o fuera de rango
-         *         (JSON inválido, Base64 inválido, parámetros imposibles...).
+         *         (JSON inválido, Base64 inválido, campos desconocidos, parámetros
+         *         imposibles...). Misma estrictez que el parser C++.
          */
         fun fromBase64(blob: String): Envelope {
             val decoded: ByteArray
@@ -80,26 +92,33 @@ data class Envelope(
             }
 
             return try {
+                // Strict: rechaza campos desconocidos (paridad con C++).
+                val keys = json.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    if (k !in ALLOWED_FIELDS) throw EnvelopeException("Campo desconocido: $k")
+                }
+
                 val v = json.getInt("v")
+                val aead = json.getString("aead")
                 val kdf = json.getString("kdf")
+                val ops = json.getInt("ops")
                 val memKib = json.getInt("mem_kib")
-                val iters = json.getInt("iters")
-                val parallelism = json.getInt("parallelism")
                 val salt = b64decode(json.getString("salt"))
                 val nonce = b64decode(json.getString("nonce"))
                 val ciphertext = b64decode(json.getString("ciphertext"))
 
                 if (v != CURRENT_VERSION) throw EnvelopeException("Versión no soportada: $v")
+                if (aead != AEAD_NAME) throw EnvelopeException("Algoritmo AEAD desconocido: $aead")
                 if (kdf != KDF_NAME) throw EnvelopeException("KDF desconocido: $kdf")
-                if (memKib !in 1..262144) throw EnvelopeException("mem_kib fuera de rango: $memKib")
-                if (iters !in 1..16) throw EnvelopeException("iters fuera de rango: $iters")
-                if (parallelism !in 1..32) throw EnvelopeException("parallelism fuera de rango: $parallelism")
+                if (ops !in 1..OPS_MAX) throw EnvelopeException("ops fuera de rango: $ops")
+                if (memKib !in 1..MEM_KIB_MAX) throw EnvelopeException("mem_kib fuera de rango: $memKib")
                 if (salt.size != SALT_BYTES) throw EnvelopeException("salt debe tener $SALT_BYTES bytes, tiene ${salt.size}")
                 if (nonce.size != NONCE_BYTES) throw EnvelopeException("nonce debe tener $NONCE_BYTES bytes, tiene ${nonce.size}")
                 if (ciphertext.isEmpty()) throw EnvelopeException("ciphertext vacío")
-                if (ciphertext.size < 16) throw EnvelopeException("ciphertext demasiado corto (falta tag GCM)")
+                if (ciphertext.size < TAG_BYTES) throw EnvelopeException("ciphertext demasiado corto (falta tag)")
 
-                Envelope(v, kdf, memKib, iters, parallelism, salt, nonce, ciphertext)
+                Envelope(v, aead, kdf, ops, memKib, salt, nonce, ciphertext)
             } catch (e: EnvelopeException) {
                 throw e
             } catch (e: JSONException) {
