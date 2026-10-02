@@ -56,8 +56,15 @@ object Argon2Kdf {
 
         if (pepper == null || pepper.isEmpty()) return argonKey
 
-        // Binding de pepper con BLAKE2b keyed (paridad con libsodium).
+        // Binding de pepper con BLAKE2b keyed (paridad con libsodium). Los dos
+        // intermedios son secretos derivados y se borran: si no, quedan
+        // alcanzables en el heap hasta que pase el GC.
         val pepperKey = Blake2b.hash(pepper)
-        return Blake2b.hash(argonKey, key = pepperKey)
+        try {
+            return Blake2b.hash(argonKey, key = pepperKey)
+        } finally {
+            SecureWipe.wipe(pepperKey)
+            SecureWipe.wipe(argonKey)
+        }
     }
 }

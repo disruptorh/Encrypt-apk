@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    El fondo y las barras coinciden con los extremos del esquema de `CifraTheme`
+    para que el salto al arrancar no dé un fogonazo de otro color. La variante
+    oscura está en values-night/.
+-->
+<resources>
+    <color name="window_background">#f7f9fb</color>
+    <color name="system_bar">#f7f9fb</color>
+    <color name="ic_launcher_background">#1b2440</color>
+</resources>

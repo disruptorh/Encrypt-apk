@@ -4,15 +4,21 @@
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="@string/app_name"
-        android:icon="@android:drawable/ic_lock_lock"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:largeHeap="true"
         android:theme="@style/Theme.Cifra">
+        <!--
+            Sin screenOrientation: el `ViewModel` sobrevive a los cambios de
+            configuración, así que rotar no pierde la contraseña ni el progreso.
+            Bloquear a retrato solo estorbaría en tablets y plegables.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

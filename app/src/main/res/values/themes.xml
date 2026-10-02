@@ -1,8 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Aquí solo va el marco de la ventana; los colores de verdad los pone Compose con
+    `CifraTheme`.
+
+    Los valores comunes están en dos estilos base y las variantes qualificadas
+    heredan de ellos. La razón del reparto: `windowLightNavigationBar` necesita
+    API 27 y el minSdk es 26, así que ese atributo solo puede aparecer en
+    `values-v27/`. Sin él, en tema claro la barra de navegación se pinta clara con
+    los iconos en blanco, es decir, invisibles.
+
+    Sin esto el modo claro pintaba las barras del sistema de negro sobre una app
+    clara, y el salto al arrancar se veía como un fogonazo negro antes de que
+    entrara Compose.
+-->
 <resources>
-    <style name="Theme.Cifra" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#0e1118</item>
-        <item name="android:statusBarColor">#0e1118</item>
-        <item name="android:navigationBarColor">#0e1118</item>
+    <style name="Theme.Cifra.Base.Light" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@color/system_bar</item>
+        <item name="android:navigationBarColor">@color/system_bar</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
+
+    <style name="Theme.Cifra.Base.Dark" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@color/system_bar</item>
+        <item name="android:navigationBarColor">@color/system_bar</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <!-- API 26: sin control del color de los iconos de la barra de navegación. -->
+    <style name="Theme.Cifra" parent="Theme.Cifra.Base.Light" />
 </resources>

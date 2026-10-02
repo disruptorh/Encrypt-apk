@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Icono propio en vez de `@android:drawable/ic_lock_lock`. El del framework
+    resuelve, pero es un recurso del sistema: se ve igual en cualquier app y no es
+    del propio proceso de diseño. Este es un candado con líneas de texto cifrado dentro.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Cuerpo del candado -->
+    <path
+        android:fillColor="#9BF2DA"
+        android:pathData="M40,48h28a4,4 0 0 1 4,4v20a4,4 0 0 1 -4,4h-28a4,4 0 0 1 -4,-4v-20a4,4 0 0 1 4,-4z" />
+    <!-- Arco del candado -->
+    <path
+        android:strokeColor="#9BF2DA"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M45,48v-6a9,9 0 0 1 18,0v6" />
+    <!-- Relleno de texto cifrado: el "cifrado" del candado -->
+    <path
+        android:fillColor="#1B2440"
+        android:pathData="M47,56h14v2.5h-14z M47,60.5h9v2.5h-9z M47,65h11v2.5h-11z" />
+</vector>
