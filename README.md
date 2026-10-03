@@ -8,9 +8,41 @@ Cifra **texto y archivos de cualquier tamaño** con la misma operación: la
 memoria que usa es constante, así que un archivo de 40 GB se cifra igual de bien
 que un texto de 40 bytes.
 
-![Licencia](https://img.shields.io/badge/License-Apache--2.0-yellow.svg)
+<p align="center">
+  <a href="https://github.com/disruptorh/Encrypt-apk/releases/latest/download/Cifra.1.3.apk">
+    <img alt="Descargar" src="https://img.shields.io/badge/%E2%AC%87%20Download-latest%20release-2f6feb?style=for-the-badge&logo=github&logoColor=white">
+  </a>
+  <a href="https://github.com/disruptorh/Encrypt-apk/releases/latest">
+    <img alt="Versiones" src="https://img.shields.io/github/v/release/disruptorh/Encrypt-apk?label=release&style=flat&logo=github&logoColor=white">
+  </a>
+  <a href="./LICENSE">
+    <img alt="Licencia" src="https://img.shields.io/badge/licencia-Apache--2.0-blue?style=flat">
+  </a>
+</p>
 
-## Uso
+## 📥 Descarga rápida
+
+**[`Cifra.1.3.apk`](https://github.com/disruptorh/Encrypt-apk/releases/latest/download/Cifra.1.3.apk)**
+— APK firmado, listo para instalar en Android 8.0 o superior.
+
+Para instalarlo a mano: cópialo al móvil y ábrelo desde el explorador de
+archivos (hay que permitir «instalar apps de orígenes desconocidos» para el
+gestor de archivos), o pásalo por `adb` si lo tienes conectado:
+
+```bash
+# 1. Descargar la última release (el nombre del asset no cambia nunca)
+curl -L -o Cifra.apk https://github.com/disruptorh/Encrypt-apk/releases/latest/download/Cifra.1.3.apk
+
+# 2. Instalar en el móvil conectado por USB (con depuración USB activada)
+adb install -r Cifra.apk
+```
+
+Si prefieres no compilar y ya tienes el APK en el móvil, esto es todo: no pide
+permisos, no hay cuenta, no hay configuración inicial.
+
+## 🚀 Uso rápido
+
+La app tiene **una sola pantalla**.
 
 1. Elige **Cifrar** o **Descifrar**.
 2. Pega el contenido o elige un archivo con el selector del sistema (SAF). La app
@@ -28,7 +60,239 @@ El sobre lleva dentro los parámetros del KDF, así que algo cifrado con el perf
 Estándar se puede descifrar aunque el perfil por defecto cambie. No hace falta
 recordar qué perfil se usó.
 
-## Decisiones de diseño
+## 📦 Compilar desde código
+
+La raíz del repositorio **es** el proyecto Gradle: no hay subdirectorio
+`android/`, así que todos los comandos se ejecutan desde la raíz.
+
+### Requisitos
+
+| Qué | Versión |
+|---|---|
+| JDK | 17 (`sourceCompatibility`/`jvmTarget` = `17`) |
+| Android Gradle Plugin | 8.9.1 |
+| Kotlin | 2.0.20 (+ plugin de Compose) |
+| Gradle | 8.11.1, vía wrapper (no hace falta instalarlo) |
+| Android SDK | plataforma **34**, `minSdk 26`, `targetSdk 34` |
+| Herramientas de línea de comandos del SDK | `sdkmanager`, `platform-tools` (`adb`) |
+
+Android Studio Ladybug o posterior abre el proyecto tal cual y trae su propio
+JDK, así que instalar solo el SDK y el JDK 17 es suficiente.
+
+**`local.properties`**: el SDK se localiza por el fichero `local.properties` de
+la raíz, que está en `.gitignore` y por eso no viene en el clon. Créalo con la
+ruta **de tu máquina**:
+
+```bash
+# 1. Crear local.properties apuntando a tu SDK (cambia la ruta si no es esta)
+printf 'sdk.dir=%s\n' "$HOME/Android/Sdk" > local.properties
+
+# 2. Comprobar que ha quedado bien
+cat local.properties
+```
+
+La ruta que trae el repositorio publicado no te sirve: es la del equipo que
+compiló el APK y en tu equipo ese directorio no existe. Si tienes el SDK en otro
+sitio (por ejemplo `/opt/android-sdk`), sustituye `$HOME/Android/Sdk` por esa
+ruta. Android Studio escribe este fichero solo al abrir el proyecto.
+
+### Clonar
+
+```bash
+# 1. Clonar el repositorio
+git clone https://github.com/disruptorh/Encrypt-apk.git
+cd Encrypt-apk
+```
+
+### Dependencias
+
+Paquetes del SDK que hacen falta (Debian/Ubuntu; en Android Studio, SDK Manager):
+
+```bash
+# 1. Aceptar las licencias del SDK (una sola vez)
+yes | sdkmanager --licenses
+
+# 2. Instalar la plataforma 34 y las platform-tools (adb)
+sdkmanager "platforms;android-34" "platform-tools"
+```
+
+Las build-tools las elige el AGP solo; no hay versión fijada en el proyecto.
+
+### Compilar
+
+**El camino recomendado** es el script de la raíz: pasa los tests, compila el
+release y comprueba que el APK va firmado.
+
+```bash
+# 1. Build completo: tests unitarios + APK release + comprobación de firma
+chmod +x build_apk.sh
+./build_apk.sh
+```
+
+Sin permisos de ejecución también vale `./build_apk.sh` si lanzas el intérprete:
+`bash build_apk.sh`.
+
+El APK release queda en:
+
+```text
+app/build/outputs/apk/release/app-release.apk
+```
+
+**Sin `keystore.properties` el release sale sin firmar** y por eso
+`build_apk.sh` termina con error en el paso de firma (el APK se ha generado, pero
+no se puede instalar). La sección [🔐 Seguridad y firma](#-seguridad-y-firma)
+tiene el bloque para crear un keystore de pruebas.
+
+Para probar en el dispositivo puedes ir directo al APK debug, que sí va firmado
+con la clave de depuración:
+
+```bash
+# 1. APK debug (firmado con la clave de depuración, instalable tal cual)
+./gradlew :app:assembleDebug
+```
+
+```text
+app/build/outputs/apk/debug/app-debug.apk
+```
+
+### Ejecutar los tests
+
+```bash
+# 1. Tests unitarios en la JVM (188 tests)
+./gradlew :app:testDebugUnitTest
+```
+
+Qué cubren:
+
+| Fichero | Tests | Cubre |
+|---|---|---|
+| `Argon2KdfTest.kt` | 13 | Vector oficial de **Argon2id RFC 9106** (Apéndice A.3), binding de pepper, rangos fuera de límite |
+| `Base64UrlTest.kt` | 8 | Longitudes exactas, arrastres de 1–3 bytes entre trozos, equivalencia con el camino de una pasada |
+| `ChaCha20Poly1305PrimitiveTest.kt` | 10 | Vectors de ChaCha20 (RFC 8439) y Poly1305, endianess, claves y máscaras |
+| `CryptoEngineTest.kt` | 21 | Round-trip: texto vacío, 1 char, 10 KB, emojis/UTF-8, con/sin pepper. Negativos: contraseña incorrecta, pepper incorrecto, ciphertext corrupto. Presupuesto de memoria |
+| `CryptoEngineStreamingTest.kt` | 9 | Streaming con archivos reales, bytes idénticos a la API de una pasada, tag roto detectado al final y nada publicado |
+| `EnvelopeStreamingTest.kt` | 14 | Escritor streaming idéntico byte a byte al de memoria, lector con lecturas de 1 byte, tolerancia a whitespace, rechazos (truncado, basura final, terminador roto), y sobre sin tamaño declarado |
+| `EnvelopeTest.kt` | 13 | Fuzzing del parser: JSON malformado, Base64 inválido, campos ausentes, claves no permitidas, parámetros fuera de rango |
+| `ConstantMemoryTest.kt` | 4 | Memoria constante medida: 256 MiB de entrada con techo de KDF + 16 MiB, independencia del pico al ×4, presupuesto `IN_MEMORY`/`STREAMED`, y el contrato de `open` de `startDecrypting` |
+| `InteropExportTest.kt` | 1 | Exportador de interoperabilidad; **se salta** salvo que se le pase `-PinteropOut` |
+| `InteropVectorsTest.kt` | 6 | Interoperabilidad real con Encrypt-C++: serialización idéntica byte a byte, descifrado de blobs de C++, paridad streaming/una pasada, negativos |
+| `PlanTest.kt` | 25 | Decisiones de la UI sin Android: cotas de tamaño, UTF-8 exacto, memoria o archivo, recorte del nombre de destino y sus casos límite |
+| `Poly1305DiagnosticTest.kt` | 4 | Casos límite de bloque y alineación del acumulador |
+| `AsciiTextStreamTest.kt` | 13 | El texto pegado se decodifica en streaming: bytes idénticos, trozos arbitrarios, espacios del interior, ASCII inválido, y un sobre de 12 MiB leído con memoria constante |
+| `SourcesTest.kt` | 31 | Capa SAF con Robolectric y un `ContentProvider` real: modo de escritura, `SIZE`/`DISPLAY_NAME` por proyección, tamaños desconocidos, proveedores que fallan, `readIfSmall` sin truncar, temporales privados |
+| `XChaCha20Poly1305StreamingTest.kt` | 10 | AEAD en trozos contra una sola pasada, tag truncado, partición arbitraria |
+| `XChaCha20Poly1305Test.kt` | 6 | Vectors de HChaCha20 y AEAD, nonce de 24 bytes, tag truncado |
+
+Son 188 tests, de los que 1 se salta solo (el exportador, que solo actúa con
+`-PinteropOut`). Los tests corren con `-Xmx2g` porque el de memoria constante
+mueve 256 MiB.
+
+En un móvil de verdad, con el dispositivo conectado:
+
+```bash
+# 1. Tests de instrumentación (Compose) — 4 tests de UI
+./gradlew :app:connectedDebugAndroidTest
+```
+
+| Test | Qué cubre |
+|---|---|
+| `laAppArrancaYMuestraLaPantalla` | Regresión del crash `LocalLifecycleOwner not present`. Compilaba, el release se firmaba y los 188 tests de JVM pasaban; solo montaba la ventana en un dispositivo y peta |
+| `pegarTraeElTextoAlCampo` | Regresión del camino de texto inalcanzable: sin botón de pegar no había forma de meter texto a mano |
+| `sePuedeCifrarYDescifrarUnTextoCorto` | El recorrido completo sin SAF: cifrar, leer el sobre y descifrarlo |
+| `sinContrasenaNoSaleNada` | Sin contraseña no se ejecuta nada, comprobado por el efecto y no por el texto del aviso (el Snackbar se va solo y daría tests que fallan por tiempo) |
+
+Existen por un motivo concreto: los dos bugs más molestos que aparecieron se
+encontraron a mano en el móvil y **no los veía ningún test de JVM**. Los dos
+eran de la capa Compose, que no tenía ninguno. Para que no dependan de los
+textos visibles hay `Tags` en `ui/Theme.kt` (`CONTENT`, `PASSWORD`, `PEPPER`,
+`PASTE`, `RUN`, `RESULT`).
+
+### Ejecutar la aplicación
+
+```bash
+# 1. APK debug en el dispositivo conectado
+./gradlew :app:installDebug
+```
+
+O instalar a mano un APK ya compilado:
+
+```bash
+# 1. Instalar el debug (va firmado con la clave de depuración)
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+# 2. Instalar el release, si lo has firmado con un keystore propio
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
+`adb install -r` sustituye la versión anterior conservando los datos. Con el
+release **sin firmar** falla: ese es el síntoma del APK sin keystore.
+
+## 🧰 Comandos útiles
+
+```bash
+# 1. Build recomendado: tests + APK release + comprobación de firma
+./build_apk.sh
+
+# 2. Solo tests
+./gradlew :app:testDebugUnitTest
+
+# 3. APK debug
+./gradlew :app:assembleDebug
+
+# 4. APK release (sin la comprobación de firma; sale sin firmar si no hay keystore)
+./gradlew :app:assembleRelease
+
+# 5. Instalar el debug en el móvil conectado
+./gradlew :app:installDebug
+
+# 6. Lint
+./gradlew :app:lintDebug
+
+# 7. Tests de UI en el dispositivo
+./gradlew :app:connectedDebugAndroidTest
+
+# 8. Verificar la firma de un APK (busca el apksigner más nuevo del SDK)
+find "$HOME/Android/Sdk/build-tools" -name apksigner -type f | sort -V | tail -1 | xargs -I{} {} verify --print-certs app/build/outputs/apk/release/app-release.apk
+```
+
+**Verificar la interoperabilidad contra Encrypt-C++ en caliente** (solo si
+tienes ese repositorio compilado con `build/libencrypt_core.a`):
+
+```bash
+# 1. Interop bidireccional Kotlin <-> C++ (indica dónde está Encrypt-C++)
+CPP_ROOT=/ruta/a/Encrypt-C++ tools/interop/verify.sh
+```
+
+## 🗂️ Estructura del proyecto
+
+```text
+.
+├── app/
+│   ├── build.gradle.kts          ← compileSdk 34, minSdk 26, targetSdk 34, firma
+│   ├── proguard-rules.pro
+│   └── src/
+│       ├── main/
+│       │   ├── AndroidManifest.xml
+│       │   ├── java/com/reimen/cifra/
+│       │   │   ├── crypto/      ← Kotlin puro, sin Android (testeable con JUnit)
+│       │   │   ├── data/Sources.kt  ← SAF: abrir, tamaño, temporales, publicar
+│       │   │   ├── ui/          ← ViewModel, pantalla Compose, tema
+│       │   │   └── MainActivity.kt  ← FLAG_SECURE + tema
+│       │   └── res/             ← temas (values, -night, -v27, -night-v27), icono
+│       ├── test/                ← 188 tests JVM (vectores RFC 9106 incluidos)
+│       └── androidTest/         ← 4 tests de UI en dispositivo
+├── tools/
+│   └── interop/                 ← puente y script contra Encrypt-C++
+├── build_apk.sh                 ← tests + release + comprobación de firma v2/v3
+├── gradle/wrapper/              ← Gradle 8.11.1
+├── build.gradle.kts             ← AGP 8.9.1, Kotlin 2.0.20
+├── settings.gradle.kts          ← proyecto "Cifra", solo el módulo :app
+└── gradle.properties
+```
+
+## 🧬 Decisiones técnicas
+
+### Esquema
 
 | Componente | Elección |
 |---|---|
@@ -41,6 +305,10 @@ recordar qué perfil se usó.
 | Formato | JSON (`v, aead, kdf, ops, mem_kib, salt, nonce, ciphertext`) → Base64 URL-safe sin padding |
 | Serialización | A mano, con lista blanca de campos: rechaza JSON con claves extra |
 
+Dependencias: Compose BOM 2024.06.00, `bcprov-jdk18on:1.78.1`,
+lifecycle 2.7.0, activity-compose 1.9.0, documentfile 1.0.1, y
+`android:largeHeap="true"` (necesario para el perfil de 256 MiB).
+
 ### Perfiles de fuerza
 
 | Perfil | Memoria | Iteraciones |
@@ -51,13 +319,13 @@ recordar qué perfil se usó.
 `parallelism` no viaja en el sobre porque está fijado a `1` en ambos lados: es
 lo que exige libsodium para ser interoperable.
 
-## Archivos grandes: por qué no se nota la diferencia
+### Archivos grandes: por qué no se nota la diferencia
 
 El sobre es un Base64 que envuelve un JSON que envuelve otro Base64. Recorrerlo
 "entero en memoria" habría significado copiar el archivo cuatro veces. Todo el
 camino de archivos es incremental:
 
-```
+```text
 archivo → Base64Url.Decoder → bytes del JSON → HeaderScanner → Base64Url.Decoder
         → XChaCha20Poly1305 → archivo
 ```
@@ -253,7 +521,7 @@ Lo que cubren esos 31 tests, y por qué cada caso importa:
 `ConstantMemoryTest` cifra y descifra un archivo de **256 MiB** mientras un hilo
 muestrea el heap:
 
-```
+```text
 cifrado:    pico 72 MiB (KDF 64 MiB + 8 MiB de streaming)
 descifrado: pico 72 MiB (KDF 64 MiB + 8 MiB de streaming)
 archivo:    256 MiB de entrada
@@ -270,15 +538,15 @@ streaming 10× el tamaño del archivo —un coste que es real en la API de una
 pasada, donde el mensaje vive entero en un `ByteArray`, pero no cuando va por
 trozos— y por eso la app rechazaba cualquier archivo de más de unos pocos MB con
 un mensaje que además era inútil ("reduce el texto", cuando el problema no era el
-texto). Por eso [checkSizeBudget] recibe ahora `ContentCost`: `IN_MEMORY` para las
+texto). Por eso `checkSizeBudget` recibe ahora `ContentCost`: `IN_MEMORY` para las
 API de una pasada, `STREAMED` para las que van por trozos.
 
-## Interoperable con Encrypt-C++
+### Interoperable con Encrypt-C++
 
 El esquema es **byte-a-byte compatible** con
-[Encrypt-C++](../Encrypt-C++/README.md): mismo KDF, mismo pepper por BLAKE2b,
-mismo AEAD, mismo sobre JSON/Base64. Un bloque cifrado en la app se descifra en
-la herramienta de escritorio y al revés.
+[Encrypt-C++](https://github.com/disruptorh/Encrypt-C-): mismo KDF, mismo pepper
+por BLAKE2b, mismo AEAD, mismo sobre JSON/Base64. Un bloque cifrado en la app se
+descifra en la herramienta de escritorio y al revés.
 
 Eso no es una promesa, está comprobado contra la biblioteca de C++ de verdad
 (`crypto::encrypt` / `crypto::envelope_to_base64`), en los dos sentidos:
@@ -286,22 +554,18 @@ Eso no es una promesa, está comprobado contra la biblioteca de C++ de verdad
 | Comprobación | Dónde |
 |---|---|
 | Con el mismo `salt`/`nonce`/`ciphertext`, Kotlin escribe un sobre **idéntico byte a byte** al de C++ (9 longitudes, incluidos los bordes del Base64: 0, 1, 2, 3, 4 bytes y los perfiles Estándar y Máxima) | `InteropVectorsTest` |
-| Kotlin descifra sobres que **`crypto::encrypt` de C++** produjo con Argon2id real, salt y nonce aleatorios, con y sin pepper: texto normal, vacío, UTF-8 con emoji y 300 KB de bytes binarios | `InteropVectorsTest` + `resources/interop/*.blob` |
+| Kotlin descifra sobres que **`crypto::encrypt` de C++** produjo con Argon2id real, salt y nonce aleatorios, con y sin pepper: texto normal, vacío, UTF-8 con emoji y 300 KB de bytes binarios | `InteropVectorsTest` + `app/src/test/resources/interop/*.blob` |
 | El streaming de Kotlin sobre un blob de C++ da el mismo resultado que la API de una pasada | `InteropVectorsTest` |
 | Un bit cambiado en un blob de C++ rompe la autenticación; contraseña y pepper equivocados producen **el mismo mensaje** (sin oráculo) | `InteropVectorsTest` |
 | **`crypto::decrypt` de C++ descifra lo que escribe Kotlin** (ambos perfiles, con y sin pepper, hasta 500 KB) | `tools/interop/verify.sh` |
 
-Los vectores son datos fijos, así que la compatibilidad queda cubierta por
-`./gradlew :app:testDebugUnitTest` aunque el proyecto de escritorio no compile.
-Para comprobarlo en caliente —o tras regenerar vectores—:
+Los vectores son datos fijos (`app/src/test/resources/interop/v1..v4.blob`), así
+que la compatibilidad queda cubierta por `./gradlew :app:testDebugUnitTest` aunque
+el proyecto de escritorio no compile.
 
-```bash
-tools/interop/verify.sh      # necesita Encrypt-C++ con build/libencrypt_core.a
-```
+### Arquitectura
 
-## Arquitectura
-
-```
+```text
 app/src/main/java/com/reimen/cifra/
   ├─ crypto/          ← Kotlin puro, sin dependencias de Android (testeable con JUnit)
   │   ├─ CryptoEngine.kt           encrypt()/decrypt() y la API streaming
@@ -317,6 +581,7 @@ app/src/main/java/com/reimen/cifra/
   ├─ ui/
   │   ├─ CryptoViewModel.kt        estado, progreso y cancelación
   │   ├─ MainScreen.kt             pantalla única en Compose
+  │   ├─ Plan.kt                   decisiones de la UI, sin Android
   │   └─ Theme.kt                  tema claro/oscuro
   └─ MainActivity.kt   ← FLAG_SECURE + tema
 ```
@@ -326,7 +591,9 @@ expone: `subkey = HChaCha20(key, nonce[0..16])` y
 `nonce2 = 0x00000000 || nonce[16..24]`, igual que
 `crypto_aead_xchacha20poly1305_ietf` de libsodium.
 
-## Higiene de datos sensibles
+## 🔐 Seguridad y firma
+
+### Higiene de datos sensibles
 
 - La capa `crypto/` recibe la contraseña como `CharArray` y la convierte a bytes
   UTF-8 sin crear `String` intermedios; la clave derivada y las copias del pepper
@@ -354,33 +621,57 @@ expone: `subkey = HChaCha20(key, nonce[0..16])` y
 - El portapapeles se marca como sensible (Android 13+) y el texto copiado se
   borra automáticamente a los 45 segundos, y solo si sigue siendo lo mismo que se
   copió.
+- La app **no pide ningún permiso en tiempo de ejecución**. Todo el acceso a
+  archivos pasa por el selector del sistema (SAF), así que no hay `INTERNET`, ni
+  cámara, ni almacenamiento.
 
-## Requisitos y build
+### Qué pasa sin keystore propio
 
-- Android SDK 26+ (`minSdk 26`), `targetSdk 34`
-- JDK 17, Gradle vía wrapper
-- Dependencias: Compose BOM 2024.06.00, `bcprov-jdk18on:1.78.1`,
-  lifecycle 2.8.3, activity-compose 1.9.0, documentfile 1.0.1
-- `android:largeHeap="true"` — necesario para el perfil de 256 MiB
+`app/build.gradle.kts` busca un fichero `keystore.properties` **en la raíz del
+repo** (se resuelve con `rootProject.file("keystore.properties")`, así que un
+clon limpio en cualquier máquina lo encuentra). **Si no está, la variante release
+se compila sin firmar**: el APK existe pero `adb install` lo rechaza y al
+instalarlo a mano el sistema dice que no se puede instalar. El APK debug no tiene
+ese problema (va firmado con la clave de depuración de Android).
+
+Con `minSdk = 26` la firma v1 (la de `META-INF/*.RSA`) no se genera: la v2/v3
+vive en el *APK Signing Block*, entre la última entrada local y el directorio
+central, y se reconoce por el magic `APK Sig Block 42`. Por eso un APK sin
+firmar **no tiene ningún rastro visible** —de ahí que `build_apk.sh` lo compruebe
+explícitamente en vez de fiarse de que el build terminó bien.
+
+### Crear un keystore de pruebas
 
 ```bash
-./build_apk.sh                       # tests + APK release
-./gradlew :app:testDebugUnitTest     # solo tests
-./gradlew :app:assembleDebug         # APK debug
-./gradlew :app:lintDebug             # lint
+# 1. Keystore de PRUEBAS: la contraseña está escrita a propósito para que el bloque
+#    se pegue tal cual. Es una clave de usar y tirar, no la uses para publicar nada.
+keytool -genkeypair -v -keystore release.keystore -storetype PKCS12 -alias cifra -keyalg RSA -keysize 4096 -validity 10000 -storepass test1234 -keypass test1234 -dname "CN=Cifra Test, OU=Dev, O=Local, L=Local, ST=Local, C=ES"
+
+# 2. Apuntar la firma en la raíz del repo
+cat > keystore.properties <<'EOF'
+storeFile=release.keystore
+storePassword=test1234
+keyAlias=cifra
+keyPassword=test1234
+EOF
 ```
 
-Sin `keystore.properties` el release sale sin firmar; con el fichero, firmado.
-`build_apk.sh` **comprueba la firma antes de dar el build por bueno**, porque
-con `minSdk = 26` la firma v1 no se genera: un APK sin firmar no tiene ningún
-`META-INF/*.RSA` y su único síntoma es «no se puede instalar». La firma v2/v3 vive
-en el APK Signing Block, entre la última entrada local y el directorio central, y
-se reconoce por el magic `APK Sig Block 42`. Si además hay `apksigner` en el SDK,
-el script lo usa para validar el APK e imprime el certificado:
+`storeFile` se interpreta **relativo a la raíz del repo**, la misma carpeta donde
+está `keystore.properties`: `storeFile=release.keystore` → `./release.keystore`.
 
+Para una clave de verdad: cambia las cuatro líneas de `keystore.properties` por
+tus valores antes de publicar. `keyPassword` puede ser la misma que
+`storePassword`. Los dos ficheros (`*.keystore` y `keystore.properties`) están en
+`.gitignore`, así que no se pueden subir por accidente.
+
+### Comprobar que el APK va firmado
+
+```bash
+# 1. Ver el certificado del APK release
+find "$HOME/Android/Sdk/build-tools" -name apksigner -type f | sort -V | tail -1 | xargs -I{} {} verify --print-certs app/build/outputs/apk/release/app-release.apk
 ```
-Signer #1 certificate DN: CN=PlayPause, OU=Android, O=Reimen, L=Unknown, ST=Unknown, C=XX
-```
+
+Sobra si usas `build_apk.sh`, que ya lo hace por ti.
 
 ### Una comprobación de lint desactivada, y por qué
 
@@ -398,52 +689,6 @@ operadores viven en el ViewModel, y el fallo se disparaba analizando
 `CryptoViewModel.kt`, que no contiene ninguna función @Composable. Desactivarlo no
 deja nada sin comprobar; arreglarlo de verdad pide subir AGP.
 
-## Tests
-
-`./gradlew :app:testDebugUnitTest` — **188 tests** (1 saltado: el exportador de interoperabilidad, que solo actúa con `-PinteropOut`):
-
-| Fichero | Tests | Cubre |
-|---|---|---|
-| `Argon2KdfTest.kt` | 13 | Vector oficial de **Argon2id RFC 9106** (Apéndice A.3), binding de pepper, rangos fuera de límite |
-| `Base64UrlTest.kt` | 8 | Longitudes exactas, arrastres de 1–3 bytes entre trozos, equivalencia con el camino de una pasada |
-| `ChaCha20Poly1305PrimitiveTest.kt` | 10 | Vectors de ChaCha20 (RFC 8439) y Poly1305, endianess, claves y máscaras |
-| `CryptoEngineTest.kt` | 21 | Round-trip: texto vacío, 1 char, 10 KB, emojis/UTF-8, con/sin pepper. Negativos: contraseña incorrecta, pepper incorrecto, ciphertext corrupto. Presupuesto de memoria |
-| `CryptoEngineStreamingTest.kt` | 9 | Streaming con archivos reales, bytes idénticos a la API de una pasada, tag roto detectado al final y nada publicado |
-| `EnvelopeStreamingTest.kt` | 14 | Escritor streaming idéntico byte a byte al de memoria, lector con lecturas de 1 byte, tolerancia a whitespace, rechazos (truncado, basura final, terminador roto), y sobre sin tamaño declarado |
-| `EnvelopeTest.kt` | 13 | Fuzzing del parser: JSON malformado, Base64 inválido, campos ausentes, claves no permitidas, parámetros fuera de rango |
-| `ConstantMemoryTest.kt` | 4 | Memoria constante medida: 256 MiB de entrada con techo de KDF + 16 MiB, independencia del pico al ×4, presupuesto `IN_MEMORY`/`STREAMED`, y el contrato de `open` de `startDecrypting` |
-| `InteropVectorsTest.kt` | 6 | Interoperabilidad real con Encrypt-C++: serialización idéntica byte a byte, descifrado de blobs de C++, paridad streaming/una pasada, negatives |
-| `PlanTest.kt` | 25 | Decisiones de la UI sin Android: cotas de tamaño, UTF-8 exacto, memoria o archivo, recorte del nombre de destino y sus casos límite |
-| `Poly1305DiagnosticTest.kt` | 4 | Casos límite de bloque y alineación del acumulador |
-| `AsciiTextStreamTest.kt` | 13 | El texto pegado se decodifica en streaming: bytes idénticos, trozos arbitrarios, espacios del interior, ASCII inválido, y un sobre de 12 MiB leído con memoria constante |
-| `SourcesTest.kt` | 31 | Capa SAF con Robolectric y un `ContentProvider` real: modo de escritura, `SIZE`/`DISPLAY_NAME` por proyección, tamaños desconocidos, proveedores que fallan, `readIfSmall` sin truncar, temporales privados |
-| `XChaCha20Poly1305StreamingTest.kt` | 10 | AEAD en trozos contra una sola pasada, tag truncado, partición arbitraria |
-| `XChaCha20Poly1305Test.kt` | 6 | Vectors de HChaCha20 y AEAD, nonce de 24 bytes, tag truncado |
-
-### En un móvil de verdad
-
-```bash
-./gradlew :app:connectedDebugAndroidTest
-```
-
-**4 tests de UI** en el dispositivo conectado. Existen por un motivo concreto: los
-dos bugs más molestos que aparecieron se encontraron a mano en el móvil y **no los
-veía ningún test de JVM**. Los dos eran de la capa Compose, que no tenía ninguno.
-
-| Test | Qué cubre |
-|---|---|
-| `laAppArrancaYMuestraLaPantalla` | Regresión del crash `LocalLifecycleOwner not present`. Compilaba, el release se firmaba y los 188 tests de JVM pasaban; solo montaba la ventana en un dispositivo y peta |
-| `pegarTraeElTextoAlCampo` | Regresión del camino de texto inalcanzable: sin botón de pegar no había forma de meter texto a mano |
-| `sePuedeCifrarYDescifrarUnTextoCorto` | El recorrido completo sin SAF: cifrar, leer el sobre y descifrarlo |
-| `sinContrasenaNoSaleNada` | Sin contraseña no se ejecuta nada, comprobado por el efecto y no por el texto del aviso (el Snackbar se va solo y daría tests que fallan por tiempo) |
-
-Para que los tests no dependan de los textos visibles hay `Tags` en `ui/Theme.kt`
-(`CONTENT`, `PASSWORD`, `PEPPER`, `PASTE`, `RUN`, `RESULT`); si mañana el botón
-pondrá otro rótulo, los tests siguen funcionando.
-
-`./gradlew :app:lintDebug` — sin incidencias (solo avisos informativos de
-versiones disponibles).
-
-## Licencia
+## 📄 Licencia
 
 Apache-2.0 — ver [LICENSE](LICENSE).

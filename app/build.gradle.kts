@@ -11,7 +11,10 @@ android {
     namespace = "com.reimen.cifra"
     compileSdk = 34
 
-    val keystorePropertiesFile = file("/home/reimen/Escritorio/Projects/play-pause-apk/keystore.properties")
+    // Resolved against the Gradle root project, so a fresh clone builds on any
+    // machine and `storeFile` is read relative to the same directory that holds
+    // keystore.properties. Both files are gitignored, so nothing is committed.
+    val keystorePropertiesFile = rootProject.file("keystore.properties")
     val keystoreProps = Properties()
     if (keystorePropertiesFile.exists()) {
         keystoreProps.load(FileInputStream(keystorePropertiesFile))
@@ -20,16 +23,10 @@ android {
     signingConfigs {
         create("release") {
             if (keystorePropertiesFile.exists()) {
-                val storeFileStr = keystoreProps["storeFile"] as String? ?: ""
-                var sf = file(storeFileStr)
-                if (!sf.exists() && keystorePropertiesFile.parentFile != null) {
-                    val fallback = file(keystorePropertiesFile.parentFile.absolutePath + "/app/" + storeFileStr)
-                    if (fallback.exists()) sf = fallback
-                }
-                storeFile = sf
-                storePassword = keystoreProps["storePassword"] as String? ?: ""
-                keyAlias = keystoreProps["keyAlias"] as String? ?: ""
-                keyPassword = keystoreProps["keyPassword"] as String? ?: ""
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile", ""))
+                storePassword = keystoreProps.getProperty("storePassword", "")
+                keyAlias = keystoreProps.getProperty("keyAlias", "")
+                keyPassword = keystoreProps.getProperty("keyPassword", "")
             }
         }
     }
